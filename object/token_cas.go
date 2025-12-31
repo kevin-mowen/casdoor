@@ -210,11 +210,9 @@ func escapeXMLText(input string) (string, error) {
 	return sb.String(), nil
 }
 
-// getCasUserId returns the CAS user identifier, preferring Id over Name
+// getCasUserId returns the CAS user identifier, using Name (login account)
+// The user.Id is stored in loginAccount attribute for reference
 func getCasUserId(user *User) string {
-	if user.Id != "" {
-		return user.Id
-	}
 	return user.Name
 }
 

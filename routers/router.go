@@ -75,7 +75,8 @@ func initCasFilter() {
 		switch path {
 		case "/cas/login":
 			// Redirect to Casdoor login page with CAS parameters
-			loginUrl := "/login/cas/" + defaultOrg + "/" + defaultApp + "?service=" + url.QueryEscape(service)
+			// Frontend route: /cas/:owner/:casApplicationName/login
+			loginUrl := "/cas/" + defaultOrg + "/" + defaultApp + "/login?service=" + url.QueryEscape(service)
 			ctx.Redirect(302, loginUrl)
 
 		case "/cas/logout":

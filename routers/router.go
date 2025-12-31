@@ -24,12 +24,96 @@
 package routers
 
 import (
+	"net/url"
+	"strings"
+
 	"github.com/beego/beego"
+	"github.com/beego/beego/context"
+	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/controllers"
 )
 
 func init() {
 	initAPI()
+	initCasFilter()
+}
+
+// initCasFilter registers a filter to handle standard CAS routes (without org/app prefix)
+// This is needed because Beego's parameterized routes would otherwise intercept these paths
+func initCasFilter() {
+	// Standard CAS endpoints that need special handling
+	standardCasEndpoints := map[string]bool{
+		"/cas/login":             true,
+		"/cas/logout":            true,
+		"/cas/validate":          true,
+		"/cas/serviceValidate":   true,
+		"/cas/proxyValidate":     true,
+		"/cas/p3/serviceValidate": true,
+		"/cas/p3/proxyValidate":  true,
+	}
+
+	beego.InsertFilter("/cas/*", beego.BeforeRouter, func(ctx *context.Context) {
+		path := ctx.Request.URL.Path
+
+		// Check if this is a standard CAS endpoint
+		if !standardCasEndpoints[path] {
+			return // Let normal routing handle it
+		}
+
+		// Get default organization and application from config
+		defaultOrg := conf.GetConfigString("defaultCasOrganization")
+		defaultApp := conf.GetConfigString("defaultCasApplication")
+		if defaultOrg == "" {
+			defaultOrg = "built-in"
+		}
+		if defaultApp == "" {
+			defaultApp = "app-built-in"
+		}
+
+		service := ctx.Input.Query("service")
+
+		switch path {
+		case "/cas/login":
+			// Redirect to Casdoor login page with CAS parameters
+			loginUrl := "/login/cas/" + defaultOrg + "/" + defaultApp + "?service=" + url.QueryEscape(service)
+			ctx.Redirect(302, loginUrl)
+
+		case "/cas/logout":
+			// Clear session and redirect
+			ctx.Output.Session("username", nil)
+			if service != "" {
+				ctx.Redirect(302, service)
+			} else {
+				ctx.Output.Body([]byte("Logged out successfully"))
+			}
+
+		case "/cas/validate":
+			// Rewrite to parameterized route
+			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/validate"
+
+		case "/cas/serviceValidate":
+			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/serviceValidate"
+
+		case "/cas/proxyValidate":
+			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/proxyValidate"
+
+		case "/cas/p3/serviceValidate":
+			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/p3/serviceValidate"
+
+		case "/cas/p3/proxyValidate":
+			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/p3/proxyValidate"
+		}
+	})
+}
+
+// Helper function to check if a string starts with any of the given prefixes
+func hasPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func initAPI() {
@@ -326,6 +410,7 @@ func initAPI() {
 	beego.Router("/.well-known/webfinger", &controllers.RootController{}, "GET:GetWebFinger")
 	beego.Router("/.well-known/:application/webfinger", &controllers.RootController{}, "GET:GetWebFingerByApplication")
 
+	// Parameterized CAS routes (with org/app prefix)
 	beego.Router("/cas/:organization/:application/serviceValidate", &controllers.RootController{}, "GET:CasServiceValidate")
 	beego.Router("/cas/:organization/:application/proxyValidate", &controllers.RootController{}, "GET:CasProxyValidate")
 	beego.Router("/cas/:organization/:application/proxy", &controllers.RootController{}, "GET:CasProxy")

@@ -75,8 +75,16 @@ type CasAttributes struct {
 	Avatar                                 string    `xml:"cas:avatar,omitempty"`
 	Phone                                  string    `xml:"cas:phone,omitempty"`
 	DisplayName                            string    `xml:"cas:displayName,omitempty"`
-	UserAttributes                         *CasUserAttributes
-	ExtraAttributes                        []*CasAnyAttribute `xml:",any"`
+
+	// PandaWiki compatible fields
+	UserName     string `xml:"cas:userName,omitempty"`     // Display name / nickname
+	Name         string `xml:"cas:name,omitempty"`         // Real name
+	AvatarUrl    string `xml:"cas:avatar_url,omitempty"`   // Avatar URL
+	MblNo        string `xml:"cas:MblNo,omitempty"`        // Mobile number
+	LoginAccount string `xml:"cas:loginAccount,omitempty"` // Login account
+
+	UserAttributes  *CasUserAttributes
+	ExtraAttributes []*CasAnyAttribute `xml:",any"`
 }
 
 type CasUserAttributes struct {
@@ -202,6 +210,36 @@ func escapeXMLText(input string) (string, error) {
 	return sb.String(), nil
 }
 
+// getCasUserId returns the CAS user identifier, preferring Id over Name
+func getCasUserId(user *User) string {
+	if user.Id != "" {
+		return user.Id
+	}
+	return user.Name
+}
+
+// getDisplayNameOrFallback returns display name with fallback logic
+func getDisplayNameOrFallback(user *User) string {
+	if user.DisplayName != "" {
+		return user.DisplayName
+	}
+	if user.RealName != "" {
+		return user.RealName
+	}
+	return user.Name
+}
+
+// getRealNameOrFallback returns real name with fallback logic
+func getRealNameOrFallback(user *User) string {
+	if user.RealName != "" {
+		return user.RealName
+	}
+	if user.DisplayName != "" {
+		return user.DisplayName
+	}
+	return user.Name
+}
+
 func GenerateCasToken(userId string, service string) (string, error) {
 	user, err := GetUser(userId)
 	if err != nil {
@@ -217,10 +255,17 @@ func GenerateCasToken(userId string, service string) (string, error) {
 	user.Properties = nil
 
 	authenticationSuccess := CasAuthenticationSuccess{
-		User: user.Name,
+		User: getCasUserId(user),
 		Attributes: &CasAttributes{
 			AuthenticationDate: time.Now(),
 			UserAttributes:     &CasUserAttributes{},
+
+			// PandaWiki compatible fields
+			LoginAccount: user.Name,
+			UserName:     getDisplayNameOrFallback(user),
+			Name:         getRealNameOrFallback(user),
+			AvatarUrl:    user.Avatar,
+			MblNo:        user.Phone,
 		},
 		ProxyGrantingTicket: fmt.Sprintf("PGTIOU-%s", util.GenerateId()),
 	}

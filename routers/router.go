@@ -36,6 +36,7 @@ import (
 func init() {
 	initAPI()
 	initCasFilter()
+	initCas4ICMSFilter()
 }
 
 // initCasFilter registers a filter to handle standard CAS routes (without org/app prefix)
@@ -103,6 +104,77 @@ func initCasFilter() {
 
 		case "/cas/p3/proxyValidate":
 			ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/p3/proxyValidate"
+		}
+	})
+}
+
+// initCas4ICMSFilter registers a filter to handle CAS4ICMS routes for FastGPT compatibility
+// Maps /CAS4ICMS/* paths to standard Casdoor CAS endpoints
+// Uses defaultCas4ICMSOrganization and defaultCas4ICMSApplication config for simple paths
+func initCas4ICMSFilter() {
+	// Simple CAS4ICMS endpoints that need default org/app
+	simpleCas4ICMSEndpoints := map[string]bool{
+		"/CAS4ICMS/login":              true,
+		"/CAS4ICMS/logout":             true,
+		"/CAS4ICMS/validate":           true,
+		"/CAS4ICMS/serviceValidate":    true,
+		"/CAS4ICMS/proxyValidate":      true,
+		"/CAS4ICMS/p3/serviceValidate": true,
+		"/CAS4ICMS/p3/proxyValidate":   true,
+	}
+
+	beego.InsertFilter("/CAS4ICMS/*", beego.BeforeRouter, func(ctx *context.Context) {
+		path := ctx.Request.URL.Path
+
+		// Check if this is a simple CAS4ICMS endpoint (without org/app)
+		if simpleCas4ICMSEndpoints[path] {
+			// Get FastGPT-specific default organization and application from config
+			defaultOrg := conf.GetConfigString("defaultCas4ICMSOrganization")
+			defaultApp := conf.GetConfigString("defaultCas4ICMSApplication")
+			if defaultOrg == "" {
+				defaultOrg = "built-in"
+			}
+			if defaultApp == "" {
+				defaultApp = "app-built-in"
+			}
+
+			service := ctx.Input.Query("service")
+
+			switch path {
+			case "/CAS4ICMS/login":
+				loginUrl := "/cas/" + defaultOrg + "/" + defaultApp + "/login?service=" + url.QueryEscape(service)
+				ctx.Redirect(302, loginUrl)
+
+			case "/CAS4ICMS/logout":
+				ctx.Output.Session("username", nil)
+				if service != "" {
+					ctx.Redirect(302, service)
+				} else {
+					ctx.Output.Body([]byte("Logged out successfully"))
+				}
+
+			case "/CAS4ICMS/validate":
+				ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/validate"
+
+			case "/CAS4ICMS/serviceValidate":
+				ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/serviceValidate"
+
+			case "/CAS4ICMS/proxyValidate":
+				ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/proxyValidate"
+
+			case "/CAS4ICMS/p3/serviceValidate":
+				ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/p3/serviceValidate"
+
+			case "/CAS4ICMS/p3/proxyValidate":
+				ctx.Request.URL.Path = "/cas/" + defaultOrg + "/" + defaultApp + "/p3/proxyValidate"
+			}
+			return
+		}
+
+		// For full paths with org/app, just replace prefix
+		if strings.HasPrefix(path, "/CAS4ICMS/") {
+			newPath := "/cas/" + strings.TrimPrefix(path, "/CAS4ICMS/")
+			ctx.Request.URL.Path = newPath
 		}
 	})
 }
